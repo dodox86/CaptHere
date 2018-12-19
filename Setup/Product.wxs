@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?define FullProductName = "CaptHere!"?>
+<?define AppRegistryKey = "Software\CaptHere"?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="{1EF7B8AA-4F7E-4829-B71C-9E2C0F3DBA3C}"
+           Name="CaptHere" Language="1041" Version="0.9.0.0"
+           Manufacturer="dodox86"
+           UpgradeCode="{0C603CAB-0A99-46ED-93B5-FA081DE65200}">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes"/>
+
+    <Feature Id="ProductFeature" Title="Setup" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="AppModuleComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+      <ComponentRef Id="RegistryEntryComponent" />
+      <ComponentRef Id="RegistryEntry2Component" />
+      <ComponentRef Id="AppsFolder" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLDIR" Name="CaptHere" />
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppsFolder" Name="$(var.FullProductName)" />
+      </Directory>
+
+      <Directory Id="DesktopFolder" />
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <DirectoryRef Id="TARGETDIR">
+      <Component Id="RegistryEntryComponent" Guid="{38CBE7C2-1FFA-4DF6-823B-B3DA3B497A77}">
+        <RegistryKey Root="HKCU"
+              Key="$(var.AppRegistryKey)"
+              Action="createAndRemoveOnUninstall">
+          <RegistryValue Type="integer" Name="Installed" Value="1" KeyPath="yes" />
+          <RegistryValue Type="string" Name="SaveFolder" Value="" KeyPath="no" />
+        </RegistryKey>
+      </Component>
+
+      <Component Id="RegistryEntry2Component" Guid="{BB7CB937-AE94-476D-A110-F91758DF9E56}">
+        <!-- デスクトップ上でのコンテキストメニュー -->
+        <RegistryKey Root="HKCU"
+              Key="Directory\Background\shell\CaptHere\command"
+              Action="createAndRemoveOnUninstall">
+          <!-- <Default> -->
+          <RegistryValue Type="string" Value="[INSTALLDIR]CaptHere.exe" KeyPath="yes" />
+        </RegistryKey>
+      </Component>
+
+    </DirectoryRef>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="AppModuleComponent" Guid="{35B77AB4-1446-4FFC-B618-D542221CCF44}">
+        <File Source="$(var.CaptHere.TargetPath)" Name="$(var.CaptHere.TargetFileName)"
+              Id="CaptHere.exe" KeyPath="yes" Checksum="yes"/>
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcutComponent" Guid="{FD2072F8-B6CD-4C1E-BD1A-531CFA7948FD}">
+        <Shortcut Id="Shortcut10"
+                  Name="$(var.FullProductName)"
+                  Description="$(var.FullProductName)"
+                  Target="[INSTALLDIR]CaptHere.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  />
+
+        <RegistryValue Root="HKCU" Key="$(var.AppRegistryKey)"
+          Name="DesktopShortcuts" Type="integer" Value="1" KeyPath="yes"/>
+
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="AppsFolder">
+      <Component Id="AppsFolder" Guid="{B2FA5AAA-8954-4C5B-8939-0C7D7ECD8B9B}">
+        <Shortcut Id="Shortcut10a"
+                  Name="$(var.FullProductName)"
+                  Description="$(var.FullProductName)"
+                  Target="[INSTALLDIR]CaptHere.exe"
+                  WorkingDirectory="INSTALLDIR"
+                  />
+        <RemoveFolder Id="AppsFolder" On='uninstall' />
+        <RegistryValue Root='HKCU'
+            Key="$(var.AppRegistryKey)"
+            Type='string' Value='' KeyPath='yes' />
+      </Component>
+    </DirectoryRef>
+
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLDIR">
+      <!-- TODO: Remove the comments around this Component element and the ComponentRef below in order to add resources to this installer. -->
+      <!-- <Component Id="ProductComponent"> -->
+      <!-- TODO: Insert files, registry keys, and other resources here. -->
+      <!-- </Component> -->
+    </ComponentGroup>
+  </Fragment>
+</Wix>
