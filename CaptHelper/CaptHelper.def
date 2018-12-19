@@ -1,0 +1,8 @@
+LIBRARY CaptHelper
+
+EXPORTS
+	CaptHelper_AttachWindow		@1
+	CaptHelper_DetatchWindow	@2
+	CaptHelper_RegisterNotification		@3
+	CaptHelper_UnregisterNotification	@4
+

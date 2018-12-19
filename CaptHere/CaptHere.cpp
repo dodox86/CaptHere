@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include <shlwapi.h>
 #include "CaptHere.h"
+#include "CaptHelper/CaptHelper.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -19,14 +20,17 @@ static LRESULT OnNcRButtonDown(HWND hWnd, WPARAM wParam, LPARAM lParam);
 static LRESULT OnActivate(HWND hWnd, WPARAM wParam, LPARAM lParam);
 static LRESULT OnApp(HWND hWnd, WPARAM wParam, LPARAM lParam);
 static LRESULT OnKeyDown(HWND hWnd, WPARAM wParam, LPARAM lParam);
-void Capture(HWND hWnd);
+void CaptureByRect(LPCRECT prect);
+void CaptureByWindow(HWND hWnd, DWORD dwRop);
 void CaptureEx(LPCTSTR pszFileName, LPCRECT prect);
+void CaptureByWindowEx(LPCTSTR pszFileName, HWND hWnd, DWORD dwRop);
 static void MakeFileName(LPTSTR pszFileName);
 static void AdjustWindowSize(HWND hWnd, LPCRECT prect);
 
 static HINSTANCE g_hInstance = NULL;
 static WCHAR g_szTitle[128];
 static HWND g_hHandleWnd = NULL;
+static HWND g_hOperationDlg = NULL;
 
 static SETTINGS g_settings;
 
@@ -130,12 +134,24 @@ LRESULT OnCreate(HWND hWnd, LPCREATESTRUCT /*pcs*/)
 
     // 全画面
     g_hHandleWnd = CreateHandleWindow(g_hInstance, hWnd, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SW_SHOW);
-    return 0L;
+
+    CaptHelper_AttachWindow(hWnd);
+    CaptHelper_RegisterNotification(WM_CAPTHEREAPP, SUBCOMMAND_CAPTURE_FOREGROUND, SUBCOMMAND_CAPTURE_SCREEN);
+
+    g_hOperationDlg = ShowOperationDialog(g_hInstance, hWnd);
+    return 0;
+}
+
+LRESULT OnDestroy(HWND hWnd)
+{
+    CaptHelper_DetatchWindow();
+    PostQuitMessage(0);
+    return 0;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    LRESULT lResult = 0L;
+    LRESULT lResult = 0;
     switch (message)
     {
     case WM_CREATE:
@@ -196,7 +212,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_DESTROY:
-        PostQuitMessage(0);
+        lResult = OnDestroy(hWnd);
         break;
 
     default:
@@ -283,17 +299,39 @@ static LRESULT OnMove(HWND hWnd, WPARAM wParam, LPARAM lParam)
     ATLTRACE(_T("%s(): x,y=(%d,%d)\n"), _T(__FUNCTION__), rect.left, rect.top);
     SetWindowPos(g_hHandleWnd, NULL, rect.left, rect.top, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
 
+    SendMessage(g_hOperationDlg, WM_CAPTHEREAPP, SUBCOMMAND_ADJUST, 0);
+
     return lResult;
 }
 
 static LRESULT OnApp(HWND hWnd, WPARAM wParam, LPARAM lParam)
 {
-    if (wParam == SUBCOMMAND_ADJUST) {
+    switch (wParam) {
+    case SUBCOMMAND_ADJUST:
+    {
         LPCRECT prect = (LPCRECT)lParam;
         AdjustWindowSize(hWnd, prect);
     }
-    else if (wParam == SUBCOMMAND_CAPTURE) {
-        Capture(hWnd);
+    break;
+
+    case SUBCOMMAND_CAPTURE:
+    {
+        RECT rect;
+        GetWindowRect(hWnd, &rect);
+        CaptureByRect(&rect);
+    }
+    break;
+
+    case SUBCOMMAND_CAPTURE_SCREEN:
+        CaptureByWindow(GetDesktopWindow(), SRCCOPY | CAPTUREBLT);
+        break;
+
+    case SUBCOMMAND_CAPTURE_FOREGROUND:
+        CaptureByWindow(GetForegroundWindow(), SRCCOPY);
+        break;
+
+    default:
+        break;
     }
 
     return 0;
@@ -314,6 +352,7 @@ static LRESULT OnSize(HWND hWnd, WPARAM wParam, LPARAM lParam)
         RECT rect;
         GetWindowRect(hWnd, &rect);
         SetWindowPos(g_hHandleWnd, NULL, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, SWP_NOZORDER);
+        SendMessage(g_hOperationDlg, WM_CAPTHEREAPP, SUBCOMMAND_ADJUST, 0);
     }
     else {
         lResult = DefWindowProc(hWnd, WM_SIZE, wParam, lParam);
@@ -346,7 +385,7 @@ static LRESULT OnActivate(HWND /*hWnd*/, WPARAM wParam, LPARAM /*lParam*/)
     ATLTRACE2(_T("OnActivate: wParam=%d\n"), wParam);
     SendMessage(g_hHandleWnd, WM_CAPTHEREAPP, SUBCOMMAND_ACTIVATE, wParam);
 
-    return 0L;
+    return 0;
 }
 
 static LRESULT OnKeyDown(HWND hWnd, WPARAM wParam, LPARAM lParam)
@@ -355,9 +394,6 @@ static LRESULT OnKeyDown(HWND hWnd, WPARAM wParam, LPARAM lParam)
     if (wParam == VK_ESCAPE) {
         PostMessage(hWnd, WM_CLOSE, 0, 0);
     }
-    else if (wParam == VK_CONTROL) {
-        PostMessage(hWnd, WM_CAPTHEREAPP, SUBCOMMAND_CAPTURE, 0);
-    }
     else {
         lResult = DefWindowProc(hWnd, WM_KEYDOWN, wParam, lParam);
     }
@@ -365,14 +401,20 @@ static LRESULT OnKeyDown(HWND hWnd, WPARAM wParam, LPARAM lParam)
     return lResult;
 }
 
-void Capture(HWND hWnd)
+void CaptureByRect(LPCRECT prect)
 {
-    RECT rect;
-    GetWindowRect(hWnd, &rect);
     TCHAR szFileName[MAX_PATH];
     MakeFileName(szFileName);
 
-    CaptureEx(szFileName, &rect);
+    CaptureEx(szFileName, prect);
+}
+
+void CaptureByWindow(HWND hWnd, DWORD dwRop)
+{
+    TCHAR szFileName[MAX_PATH];
+    MakeFileName(szFileName);
+
+    CaptureByWindowEx(szFileName, hWnd, dwRop);
 }
 
 void CaptureEx(LPCTSTR pszFileName, LPCRECT prect)
@@ -430,6 +472,72 @@ void CaptureEx(LPCTSTR pszFileName, LPCRECT prect)
     succeeded = BitBlt(hMemoryDC, 0, 0, bmpWidth, bmpHeight, hScreenDC, prect->left, prect->top, SRCCOPY);
     DeleteDC(hMemoryDC);
     ReleaseDC(NULL, hScreenDC);
+
+    DWORD dwBytesToWrite = (((bitCount * bmpWidth + 31) & (~31)) / 8) * bmpHeight;
+    WriteFile(hFile, pmemory, dwBytesToWrite, &dwWritten, NULL);
+
+    DeleteObject(hBitmap);
+    CloseHandle(hFile);
+}
+
+void CaptureByWindowEx(LPCTSTR pszFileName, HWND hWnd, DWORD dwRop)
+{
+    const int bitCount = 16;
+
+    HANDLE hFile = CreateFile(pszFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        DWORD dwError = GetLastError();
+        ATLTRACE2(_T("#%d: error=%ld\n"), __LINE__, dwError);
+        return;
+    }
+
+    HDC hDC = GetWindowDC(hWnd);
+    HDC hMemoryDC = CreateCompatibleDC(hDC);
+
+    RECT rect;
+    GetWindowRect(hWnd, &rect);
+
+    int bmpWidth = rect.right - rect.left;
+    int bmpHeight = rect.bottom - rect.top;
+
+    BITMAPFILEHEADER fileHeader;
+    BITMAPINFOHEADER infoHeader;
+
+    fileHeader.bfType = 'B' | ('M' << 8);   // 0x4d42
+    fileHeader.bfSize = 0;
+    fileHeader.bfReserved1 = 0;
+    fileHeader.bfReserved2 = 0;
+    fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+
+    infoHeader.biSize = sizeof(infoHeader);
+    infoHeader.biWidth = bmpWidth;
+    infoHeader.biHeight = -bmpHeight;   // top-down DIB
+    infoHeader.biPlanes = 1;
+
+    // 16bit per pixel
+    infoHeader.biBitCount = bitCount;
+    infoHeader.biCompression = BI_RGB;
+    infoHeader.biSizeImage = 0;
+    infoHeader.biXPelsPerMeter = 0;
+    infoHeader.biYPelsPerMeter = 0;
+    infoHeader.biClrUsed = 0;
+    infoHeader.biClrImportant = 0;
+
+    DWORD   dwWritten;
+    WriteFile(hFile, &fileHeader, sizeof(fileHeader), &dwWritten, NULL);
+    WriteFile(hFile, &infoHeader, sizeof(infoHeader), &dwWritten, NULL);
+
+    BITMAPINFO info;
+    info.bmiHeader = infoHeader;
+
+    BOOL succeeded;
+    BYTE* pmemory = NULL;
+    HBITMAP hBitmap = CreateDIBSection(hDC, &info, DIB_RGB_COLORS, (void**)&pmemory, 0, 0);
+    SelectObject(hMemoryDC, hBitmap);
+
+    succeeded = BitBlt(hMemoryDC, 0, 0, bmpWidth, bmpHeight, hDC, 0, 0, dwRop/*SRCCOPY*/);
+    DeleteDC(hMemoryDC);
+    ReleaseDC(NULL, hDC);
 
     DWORD dwBytesToWrite = (((bitCount * bmpWidth + 31) & (~31)) / 8) * bmpHeight;
     WriteFile(hFile, pmemory, dwBytesToWrite, &dwWritten, NULL);

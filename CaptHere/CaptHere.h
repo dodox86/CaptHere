@@ -20,6 +20,8 @@
 typedef enum tagSUBCOMMAND {
     SUBCOMMAND_BASE = 0,
     SUBCOMMAND_CAPTURE = SUBCOMMAND_BASE,
+    SUBCOMMAND_CAPTURE_SCREEN,
+    SUBCOMMAND_CAPTURE_FOREGROUND,
     SUBCOMMAND_ACTIVATE,
     SUBCOMMAND_ADJUST,
 } SUBCOMMAND;
@@ -33,6 +35,7 @@ typedef struct tagSETTINGS {
 } SETTINGS;
 
 INT_PTR ShowSettingsDialog(HINSTANCE hInstance, HWND hWndParent, SETTINGS* psettings);
+HWND ShowOperationDialog(HINSTANCE hInstance, HWND hWndParent);
 
 ATOM RegisterHandleWindowClass(HINSTANCE hInstance);
 HWND CreateHandleWindow(HINSTANCE hInstance, HWND hWndParent, int x, int y, int width, int height, int nCmdShow);
